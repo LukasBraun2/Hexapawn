@@ -1,0 +1,152 @@
+{
+  "format": "hexapawn-weights-v1",
+  "weights": [
+    {
+      "layer": "dense",
+      "index": 0,
+      "shape": [
+        21,
+        128
+      ],
+      "dtype": "float32",
+      "offset": 0,
+      "byteLength": 10752
+    },
+    {
+      "layer": "dense",
+      "index": 1,
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "offset": 10752,
+      "byteLength": 512
+    },
+    {
+      "layer": "dense_1",
+      "index": 0,
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float32",
+      "offset": 11264,
+      "byteLength": 65536
+    },
+    {
+      "layer": "dense_1",
+      "index": 1,
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "offset": 76800,
+      "byteLength": 512
+    },
+    {
+      "layer": "dense_2",
+      "index": 0,
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float32",
+      "offset": 77312,
+      "byteLength": 65536
+    },
+    {
+      "layer": "dense_2",
+      "index": 1,
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "offset": 142848,
+      "byteLength": 512
+    },
+    {
+      "layer": "dense_3",
+      "index": 0,
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float32",
+      "offset": 143360,
+      "byteLength": 65536
+    },
+    {
+      "layer": "dense_3",
+      "index": 1,
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "offset": 208896,
+      "byteLength": 512
+    },
+    {
+      "layer": "dense_4",
+      "index": 0,
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float32",
+      "offset": 209408,
+      "byteLength": 65536
+    },
+    {
+      "layer": "dense_4",
+      "index": 1,
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "offset": 274944,
+      "byteLength": 512
+    },
+    {
+      "layer": "policyHead",
+      "index": 0,
+      "shape": [
+        128,
+        28
+      ],
+      "dtype": "float32",
+      "offset": 275456,
+      "byteLength": 14336
+    },
+    {
+      "layer": "policyHead",
+      "index": 1,
+      "shape": [
+        28
+      ],
+      "dtype": "float32",
+      "offset": 289792,
+      "byteLength": 112
+    },
+    {
+      "layer": "valueHead",
+      "index": 0,
+      "shape": [
+        128,
+        1
+      ],
+      "dtype": "float32",
+      "offset": 289904,
+      "byteLength": 512
+    },
+    {
+      "layer": "valueHead",
+      "index": 1,
+      "shape": [
+        1
+      ],
+      "dtype": "float32",
+      "offset": 290416,
+      "byteLength": 4
+    }
+  ]
+}

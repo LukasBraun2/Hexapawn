@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hexapawn — you vs. the neural net</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --ink:#11162a;
+    --ink-2:#171d38;
+    --panel:#1c2342;
+    --panel-edge: rgba(201,162,75,.22);
+    --board-light:#e9e1ca;
+    --board-dark:#4a3826;
+    --board-dark-deep:#3a2c1d;
+    --brass:#c9a24b;
+    --brass-soft: rgba(201,162,75,.32);
+    --brass-dim: #8a703a;
+    --ivory:#f6efe0;
+    --charcoal:#222222;
+    --text:#ece7da;
+    --text-muted:#a89c84;
+    --danger:#c1623a;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 18% 8%, rgba(201,162,75,.10), transparent 45%),
+      radial-gradient(circle at 85% 92%, rgba(201,162,75,.07), transparent 50%),
+      var(--ink);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding: clamp(20px, 4vw, 48px) 16px;
+  }
+
+  .app{ width:100%; max-width: 880px; }
+
+  header{ text-align:center; margin-bottom: 28px; }
+
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 10px;
+  }
+
+  h1{
+    font-family:'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(34px, 6vw, 52px);
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+  h1 .accent{ font-style: italic; font-weight: 500; color: var(--brass); }
+
+  .tagline{
+    color: var(--text-muted);
+    font-size: 15px;
+    max-width: 480px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  main{
+    display:flex;
+    gap: 28px;
+    align-items: flex-start;
+    justify-content:center;
+    flex-wrap: wrap;
+  }
+
+  /* ---------- BOARD ---------- */
+
+  .board-col{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap: 16px;
+  }
+
+  .board-frame{
+    background: linear-gradient(160deg, #2a2010, #181206);
+    padding: 14px;
+    border-radius: 14px;
+    box-shadow: 0 18px 40px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(201,162,75,.18);
+  }
+
+  .board-grid{
+    display:grid;
+    grid-template-columns: 22px repeat(3, minmax(72px, 110px));
+    grid-template-rows: repeat(3, minmax(72px, 110px)) 22px;
+    gap: 0;
+    width: min(78vw, 360px);
+  }
+
+  .rank-label, .file-label{
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--brass-dim);
+  }
+
+  .square{
+    position:relative;
+    border:none;
+    padding:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor: default;
+    background: var(--board-light);
+  }
+  .square.dark{ background: var(--board-dark); }
+  .square.light{ background: var(--board-light); }
+
+  .square.selectable{ cursor:pointer; }
+  .square.selectable:hover{ filter: brightness(1.08); }
+
+  .square:focus-visible{
+    outline: 2px solid var(--brass);
+    outline-offset: -3px;
+    z-index: 2;
+  }
+
+  .square.selected::after{
+    content:"";
+    position:absolute; inset: 6%;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 3px var(--brass);
+    pointer-events:none;
+  }
+
+  .move-target::before{
+    content:"";
+    position:absolute;
+    width: 22%; height: 22%;
+    border-radius: 50%;
+    background: var(--brass-soft);
+    pointer-events:none;
+  }
+
+  .capture-target::after{
+    content:"";
+    position:absolute; inset: 9%;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 3px var(--danger);
+    pointer-events:none;
+  }
+
+  .pawn-icon{ width: 56%; height: 56%; filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
+  .pawn-icon .body{ stroke-width: 1.6; }
+  .pawn.white .body{ fill: var(--ivory); stroke: var(--brass-dim); }
+  .pawn.black .body{ fill: var(--charcoal); stroke: rgba(201,162,75,.55); }
+
+  @keyframes popIn{
+    from{ transform: scale(.55); opacity:.4; }
+    to{ transform: scale(1); opacity:1; }
+  }
+  .pawn.just-moved{ animation: popIn .28s cubic-bezier(.2,.9,.3,1.2); }
+
+  .status-bar{
+    text-align:center;
+    min-height: 46px;
+  }
+  .status-line{
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .status-line.thinking{ color: var(--text-muted); font-weight:500; }
+  .status-line.win{ color: var(--brass); font-family:'Fraunces', serif; font-size:18px; }
+  .eval-line{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .thinking .dots::after{
+    content:'.';
+    animation: dots 1.2s steps(4,end) infinite;
+  }
+  @keyframes dots{
+    0%{ content:'.'; } 33%{ content:'..'; } 66%{ content:'...'; } 100%{ content:'.'; }
+  }
+
+  .counts{
+    display:flex; gap:18px; justify-content:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .counts span b{ color: var(--text); }
+
+  /* ---------- PANEL ---------- */
+
+  .panel{
+    width: min(100%, 280px);
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 14px;
+    padding: 18px 18px 16px;
+  }
+
+  .turn-pill{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .turn-dot{ width:8px; height:8px; border-radius:50%; background: var(--brass); }
+
+  .panel h2{
+    font-family:'Fraunces', serif;
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0 0 10px;
+    color: var(--text);
+  }
+
+  .ledger{
+    border-top: 1px solid var(--panel-edge);
+    border-bottom: 1px solid var(--panel-edge);
+    max-height: 220px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+  }
+  .ledger ol{ list-style:none; margin:0; padding:0; }
+  .ledger li{
+    display:grid;
+    grid-template-columns: 28px 1fr 1fr;
+    align-items:center;
+    padding: 7px 2px;
+    border-bottom: 1px dashed rgba(201,162,75,.16);
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+  .ledger li:last-child{ border-bottom:none; }
+  .ledger .num{ color: var(--brass-dim); }
+  .ledger .w{ color: var(--ivory); }
+  .ledger .b{ color: var(--text); }
+  .ledger-empty{
+    padding: 14px 2px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  button.restart{
+    width:100%;
+    background: transparent;
+    border: 1px solid var(--brass-dim);
+    color: var(--brass);
+    font-family:'Inter', sans-serif;
+    font-weight:600;
+    font-size: 13.5px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor:pointer;
+    transition: background .15s, color .15s;
+  }
+  button.restart:hover{ background: var(--brass); color: var(--ink); }
+  button.restart:focus-visible{ outline: 2px solid var(--brass); outline-offset:2px; }
+
+  .note{
+    margin-top: 14px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .pawn.just-moved{ animation:none; }
+    .thinking .dots::after{ animation:none; content:'…'; }
+  }
+
+  @media (max-width: 620px){
+    main{ flex-direction:column; align-items:center; }
+    .panel{ width: 100%; max-width: 360px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <p class="eyebrow">three ranks · six pawns · one fully solved game</p>
+    <h1>Hexa<span class="accent">pawn</span></h1>
+    <p class="tagline">You command White. Black plays via a neural network trained on minimax-optimal moves.</p>
+  </header>
+
+  <main>
+    <div class="board-col">
+      <div class="board-frame">
+        <div class="board-grid" id="boardGrid"></div>
+      </div>
+      <div class="status-bar">
+        <div class="status-line" id="statusLine">Your move — choose a pawn.</div>
+        <div class="eval-line" id="evalLine"></div>
+      </div>
+      <div class="counts" id="counts"></div>
+    </div>
+
+    <div class="panel">
+      <div class="turn-pill"><span class="turn-dot" id="turnDot"></span><span id="turnPillText">white to move</span></div>
+      <h2>Ledger</h2>
+      <div class="ledger" id="ledgerWrap">
+        <ol id="moveLog"></ol>
+      </div>
+      <button class="restart" id="restartBtn">New game</button>
+      <p class="note">Black's moves come from a neural network trained via supervised learning on minimax-optimal labels. No TensorFlow.js needed — the weights run as a plain JavaScript forward pass. Place the <code>supervised_model/</code> folder next to this HTML and serve with any local web server. Falls back to minimax if weights aren't found.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const EMPTY=0, WHITE=1, BLACK=2;
+
+  const WHITE_PAWN_CAPTURES = [[],[],[],[1],[0,2],[1],[4],[3,5],[4]];
+  const BLACK_PAWN_CAPTURES = [[4],[3,5],[4],[7],[6,8],[7],[],[],[]];
+
+  const STARTING = [BLACK,BLACK,BLACK, EMPTY,EMPTY,EMPTY, WHITE,WHITE,WHITE];
+
+  function cloneState(s){ return { board: s.board.slice(), turn: s.turn }; }
+
+  function generateMoves(s){
+    const moves=[];
+    for(let i=0;i<9;i++){
+      if(s.board[i]!==s.turn) continue;
+      if(s.turn===WHITE){
+        const fwd=i-3;
+        if(fwd>=0 && s.board[fwd]===EMPTY) moves.push([i,fwd]);
+        for(const t of WHITE_PAWN_CAPTURES[i]) if(s.board[t]===BLACK) moves.push([i,t]);
+      } else {
+        const fwd=i+3;
+        if(fwd<9 && s.board[fwd]===EMPTY) moves.push([i,fwd]);
+        for(const t of BLACK_PAWN_CAPTURES[i]) if(s.board[t]===WHITE) moves.push([i,t]);
+      }
+    }
+    return moves;
+  }
+
+  function applyMove(s, move){
+    const ns = cloneState(s);
+    ns.board[move[1]] = ns.board[move[0]];
+    ns.board[move[0]] = EMPTY;
+    ns.turn = ns.turn===WHITE ? BLACK : WHITE;
+    return ns;
+  }
+
+  function isTerminal(s){
+    let winner=null;
+    if(s.board[6]===BLACK || s.board[7]===BLACK || s.board[8]===BLACK) winner=BLACK;
+    if(s.board[0]===WHITE || s.board[1]===WHITE || s.board[2]===WHITE) winner=WHITE;
+    if(winner!==null) return { over:true, winner, reason:'rank' };
+    if(generateMoves(s).length===0){
+      winner = s.turn===WHITE ? BLACK : WHITE;
+      return { over:true, winner, reason:'stalemate' };
+    }
+    return { over:false, winner:null, reason:null };
+  }
+
+  // full-depth minimax with mate-distance tie-breaking
+  function search(s, plies){
+    const t = isTerminal(s);
+    if(t.over) return { score: t.winner===WHITE ? 1 : -1, mate: plies };
+    const moves = generateMoves(s);
+    let best=null;
+    for(const m of moves){
+      const child = applyMove(s, m);
+      const res = search(child, plies+1);
+      const cand = { move:m, score:res.score, mate:res.mate };
+      if(best===null || better(s.turn, cand, best)) best=cand;
+    }
+    return best;
+  }
+
+  // true if `cand` is a strictly better outcome for `turn` than `best`
+  function better(turn, cand, best){
+    const sign = turn===WHITE ? 1 : -1;
+    const cVal = cand.score*sign, bVal = best.score*sign;
+    if(cVal !== bVal) return cVal > bVal;
+    if(cVal > 0) return cand.mate < best.mate;   // winning: finish faster
+    return cand.mate > best.mate;                 // losing: delay longer
+  }
+
+  function pickMove(s){
+    const moves = generateMoves(s);
+    let bestList=[];
+    for(const m of moves){
+      const child = applyMove(s, m);
+      const res = search(child, 1);
+      const cand = { move:m, score:res.score, mate:res.mate };
+      if(bestList.length===0 || better(s.turn, cand, bestList[0])){
+        bestList=[cand];
+      } else if(cand.score===bestList[0].score && cand.mate===bestList[0].mate){
+        bestList.push(cand);
+      }
+    }
+    return bestList[Math.floor(Math.random()*bestList.length)];
+  }
+
+  // ---- Pure-JS neural network (no TF.js needed) ----
+  // Weights loaded from supervised_model/weights.bin + weights_manifest.json
+  // Architecture: Input(21) -> Dense(128,relu)*5 -> policyHead(28,softmax) + valueHead(1,tanh)
+
+  const OUTPUT_INDEX = {
+    "(6,3)":0,"(7,4)":1,"(8,5)":2,"(3,0)":3,"(4,1)":4,"(5,2)":5,
+    "(0,3)":6,"(1,4)":7,"(2,5)":8,"(3,6)":9,"(4,7)":10,"(5,8)":11,
+    "(6,4)":12,"(7,3)":13,"(7,5)":14,"(8,4)":15,
+    "(3,1)":16,"(4,0)":17,"(4,2)":18,"(5,1)":19,
+    "(0,4)":20,"(1,3)":21,"(1,5)":22,"(2,4)":23,
+    "(3,7)":24,"(4,6)":25,"(4,8)":26,"(5,7)":27
+  };
+
+  function toNetworkInput(s){
+    const vec = [];
+    for(let i=0;i<9;i++) vec.push(s.board[i]===WHITE ? 1 : 0);
+    for(let i=0;i<9;i++) vec.push(s.board[i]===BLACK ? 1 : 0);
+    for(let i=0;i<3;i++) vec.push(s.turn===WHITE ? 1 : 0);
+    return vec;
+  }
+
+  // Matrix multiply: out[j] = sum_i(a[i] * W[i*cols+j]) + b[j]
+  function dense(input, W, b, rows, cols){
+    const out = new Float32Array(cols);
+    for(let j=0;j<cols;j++){
+      let s = b[j];
+      for(let i=0;i<rows;i++) s += input[i]*W[i*cols+j];
+      out[j] = s;
+    }
+    return out;
+  }
+  function relu(v){ return v.map(x => x>0?x:0); }
+  function softmax(v){
+    const mx = Math.max(...v);
+    const e = v.map(x=>Math.exp(x-mx));
+    const s = e.reduce((a,b)=>a+b,0);
+    return e.map(x=>x/s);
+  }
+  function tanh_(v){ return v.map(x=>Math.tanh(x)); }
+
+  // Will hold { layers: [ {W, b, rows, cols}, ... ], policyW, policyB, valueW, valueB }
+  let nnWeights = null;
+  let modelLoadFailed = false;
+
+  async function loadModel(){
+    try {
+      const [manifestRes, binRes] = await Promise.all([
+        fetch('supervised_model/weights_manifest.json'),
+        fetch('supervised_model/weights.bin')
+      ]);
+      const manifest = await manifestRes.json();
+      const binBuffer = await binRes.arrayBuffer();
+
+      // Parse weight tensors from binary blob
+      const getTensor = (entry) => {
+        const floats = new Float32Array(binBuffer, entry.offset, entry.byteLength/4);
+        return floats;
+      };
+
+      // Map layer name -> list of weight tensors in order
+      const byLayer = {};
+      for(const e of manifest.weights){
+        if(!byLayer[e.layer]) byLayer[e.layer] = [];
+        byLayer[e.layer].push({ tensor: getTensor(e), shape: e.shape });
+      }
+
+      const denseNames = ['dense','dense_1','dense_2','dense_3','dense_4'];
+      const layers = denseNames.map(n => {
+        const [Wt, bt] = byLayer[n];
+        return { W: Wt.tensor, b: bt.tensor, rows: Wt.shape[0], cols: Wt.shape[1] };
+      });
+
+      const [pWt, pBt] = byLayer['policyHead'];
+      const [vWt, vBt] = byLayer['valueHead'];
+
+      nnWeights = {
+        layers,
+        policyW: pWt.tensor, policyB: pBt.tensor,
+        policyRows: pWt.shape[0], policyCols: pWt.shape[1],
+        valueW: vWt.tensor, valueB: vBt.tensor,
+        valueRows: vWt.shape[0], valueCols: vWt.shape[1]
+      };
+      console.log('Neural network weights loaded successfully.');
+    } catch(e) {
+      console.warn('Could not load neural net weights:', e.message);
+      console.warn('Falling back to minimax. Ensure supervised_model/ folder is next to this HTML.');
+      modelLoadFailed = true;
+    }
+  }
+
+  function forwardPass(inputVec){
+    const nn = nnWeights;
+    let x = new Float32Array(inputVec);
+    for(const l of nn.layers){
+      x = relu(dense(x, l.W, l.b, l.rows, l.cols));
+    }
+    const policy = softmax(Array.from(dense(x, nn.policyW, nn.policyB, nn.policyRows, nn.policyCols)));
+    return policy;
+  }
+
+  function pickMoveNN(s){
+    if(!nnWeights) return pickMove(s); // fallback
+
+    const input = toNetworkInput(s);
+    const probs = forwardPass(input);
+
+    const legalMoves = generateMoves(s);
+    let bestMove = null, bestProb = -1;
+    for(const m of legalMoves){
+      const key = `(${m[0]},${m[1]})`;
+      const idx = OUTPUT_INDEX[key];
+      if(idx !== undefined && probs[idx] > bestProb){
+        bestProb = probs[idx];
+        bestMove = m;
+      }
+    }
+    if(!bestMove) return pickMove(s);
+    return { move: bestMove };
+  }
+
+  loadModel();
+
+  function squareName(idx){
+    const file = 'abc'[idx%3];
+    const rank = 3 - Math.floor(idx/3);
+    return file+rank;
+  }
+
+  function moveNotation(s, move){
+    const isCapture = s.board[move[1]] !== EMPTY;
+    return squareName(move[0]) + (isCapture ? 'x' : '-') + squareName(move[1]);
+  }
+
+  // ---------------- game / UI state ----------------
+
+  let state = { board: STARTING.slice(), turn: WHITE };
+  let selected = null;
+  let legalTargets = [];
+  let gameOver = false;
+  let winnerInfo = null;
+  let aiThinking = false;
+  let history = [];
+
+  const boardGrid = document.getElementById('boardGrid');
+  const statusLine = document.getElementById('statusLine');
+  const evalLine = document.getElementById('evalLine');
+  const countsEl = document.getElementById('counts');
+  const moveLogEl = document.getElementById('moveLog');
+  const ledgerWrap = document.getElementById('ledgerWrap');
+  const turnPillText = document.getElementById('turnPillText');
+  const turnDot = document.getElementById('turnDot');
+  const restartBtn = document.getElementById('restartBtn');
+
+  function pawnSVG(color){
+    return `<svg class="pawn-icon" viewBox="0 0 64 64" aria-hidden="true">
+      <ellipse class="body" cx="32" cy="50" rx="17" ry="7"></ellipse>
+      <path class="body" d="M19 47 C19 35 25 31 25 25 C25 20 28 17 32 17 C36 17 39 20 39 25 C39 31 45 35 45 47 Z"></path>
+      <circle class="body" cx="32" cy="16" r="8.5"></circle>
+    </svg>`;
+  }
+
+  function renderBoard(lastMoveTo){
+    boardGrid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    for(let row=0; row<3; row++){
+      const rankEl = document.createElement('div');
+      rankEl.className = 'rank-label';
+      rankEl.style.gridRow = (row+1);
+      rankEl.style.gridColumn = 1;
+      rankEl.textContent = 3-row;
+      frag.appendChild(rankEl);
+
+      for(let col=0; col<3; col++){
+        const idx = row*3+col;
+        const sq = document.createElement('button');
+        sq.type = 'button';
+        sq.className = 'square ' + (((row+col)%2===0) ? 'light' : 'dark');
+        sq.style.gridRow = (row+1);
+        sq.style.gridColumn = (col+2);
+
+        const occ = state.board[idx];
+        let label = squareName(idx) + ', empty';
+        if(occ!==EMPTY){
+          const colorClass = occ===WHITE ? 'white' : 'black';
+          label = squareName(idx) + ', ' + colorClass + ' pawn';
+          const wrap = document.createElement('div');
+          wrap.className = 'pawn ' + colorClass + (idx===lastMoveTo ? ' just-moved' : '');
+          wrap.innerHTML = pawnSVG(colorClass);
+          sq.appendChild(wrap);
+        }
+
+        if(idx===selected) sq.classList.add('selected');
+        if(legalTargets.includes(idx)){
+          sq.classList.add(occ!==EMPTY ? 'capture-target' : 'move-target');
+        }
+
+        const canSelect = !gameOver && !aiThinking && state.turn===WHITE &&
+          (occ===WHITE || legalTargets.includes(idx));
+        if(canSelect) sq.classList.add('selectable');
+
+        sq.setAttribute('aria-label', label);
+        sq.addEventListener('click', () => onSquareClick(idx));
+        frag.appendChild(sq);
+      }
+    }
+
+    const corner = document.createElement('div');
+    corner.style.gridRow = 4; corner.style.gridColumn = 1;
+    frag.appendChild(corner);
+
+    for(let col=0; col<3; col++){
+      const fileEl = document.createElement('div');
+      fileEl.className = 'file-label';
+      fileEl.style.gridRow = 4;
+      fileEl.style.gridColumn = (col+2);
+      fileEl.textContent = 'abc'[col];
+      frag.appendChild(fileEl);
+    }
+
+    boardGrid.appendChild(frag);
+  }
+
+  function renderCounts(){
+    const w = state.board.filter(x=>x===WHITE).length;
+    const b = state.board.filter(x=>x===BLACK).length;
+    countsEl.innerHTML = `<span>White pawns <b>${w}</b></span><span>Black pawns <b>${b}</b></span>`;
+  }
+
+  function renderLedger(){
+    if(history.length===0){
+      moveLogEl.innerHTML = '<li class="ledger-empty">No moves yet — play a3, a2, or take the center.</li>';
+      return;
+    }
+    let rows='';
+    for(let i=0;i<history.length;i+=2){
+      const num = i/2+1;
+      const w = history[i] ? history[i].notation : '';
+      const b = history[i+1] ? history[i+1].notation : '';
+      rows += `<li><span class="num">${num}.</span><span class="w">${w}</span><span class="b">${b}</span></li>`;
+    }
+    moveLogEl.innerHTML = rows;
+    ledgerWrap.scrollTop = ledgerWrap.scrollHeight;
+  }
+
+  function renderStatus(){
+    if(gameOver){
+      const colorName = winnerInfo.winner===WHITE ? 'White' : 'Black';
+      const reasonText = winnerInfo.reason==='rank'
+        ? 'reached the far rank.'
+        : 'left the other side with no legal moves.';
+      statusLine.className = 'status-line win';
+      statusLine.textContent = `${colorName} wins — ${reasonText}`;
+      evalLine.textContent = '';
+      turnPillText.textContent = 'game over';
+    } else if(aiThinking){
+      statusLine.className = 'status-line thinking';
+      statusLine.innerHTML = nnWeights
+        ? 'Neural net is choosing Black\'s move<span class="dots"></span>'
+        : 'Black is reading out the position<span class="dots"></span>';
+      turnPillText.textContent = 'black to move';
+    } else {
+      statusLine.className = 'status-line';
+      statusLine.textContent = state.turn===WHITE
+        ? (selected!==null ? 'Choose a destination.' : 'Your move — choose a pawn.')
+        : 'Black to move.';
+      turnPillText.textContent = (state.turn===WHITE ? 'white' : 'black') + ' to move';
+
+      const res = search(state, 0);
+      const leader = res.score>0 ? 'White' : 'Black';
+      evalLine.textContent = `Perfect play from here: ${leader} wins in ${res.mate} ply.`;
+    }
+    turnDot.style.background = gameOver
+      ? 'var(--brass)'
+      : (state.turn===WHITE ? 'var(--ivory)' : 'var(--charcoal)');
+  }
+
+  function render(lastMoveTo){
+    renderBoard(lastMoveTo);
+    renderCounts();
+    renderLedger();
+    renderStatus();
+  }
+
+  function checkGameEnd(){
+    const t = isTerminal(state);
+    if(t.over){ gameOver=true; winnerInfo=t; }
+    return t.over;
+  }
+
+  function onSquareClick(idx){
+    if(gameOver || aiThinking || state.turn!==WHITE) return;
+
+    if(selected===idx){
+      selected=null; legalTargets=[];
+      render();
+      return;
+    }
+    if(selected!==null && legalTargets.includes(idx)){
+      doMove([selected, idx]);
+      return;
+    }
+    if(state.board[idx]===WHITE){
+      selected=idx;
+      legalTargets = generateMoves(state).filter(m=>m[0]===idx).map(m=>m[1]);
+      render();
+    } else {
+      selected=null; legalTargets=[];
+      render();
+    }
+  }
+
+  function doMove(move){
+    const notation = moveNotation(state, move);
+    history.push({ color: state.turn, notation });
+    state = applyMove(state, move);
+    selected=null; legalTargets=[];
+    render(move[1]);
+
+    if(checkGameEnd()){ render(move[1]); return; }
+
+    if(state.turn===BLACK){
+      aiThinking=true;
+      render(move[1]);
+      setTimeout(()=>{
+        const choice = pickMoveNN(state);
+        const bNotation = moveNotation(state, choice.move);
+        history.push({ color: state.turn, notation: bNotation });
+        state = applyMove(state, choice.move);
+        aiThinking=false;
+        render(choice.move[1]);
+        checkGameEnd();
+        render(choice.move[1]);
+      }, 600);
+    }
+  }
+
+  function restart(){
+    state = { board: STARTING.slice(), turn: WHITE };
+    selected=null; legalTargets=[];
+    gameOver=false; winnerInfo=null; aiThinking=false;
+    history=[];
+    render();
+  }
+
+  restartBtn.addEventListener('click', restart);
+
+  render();
+})();
+</script>
+</body>
+</html>
